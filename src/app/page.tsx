@@ -79,6 +79,16 @@ export default function Home() {
 
 	const [newMessage, setNewMessage] = useState("");
 
+	const textareaRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!textareaRef.current) {
+			return;
+		}
+
+		textareaRef.current.scrollTo(0, 10000000000);
+	}, [messages, textareaRef]);
+
 	useEffect(() => {
 		client.current.onConnect((token, identity, address) => {
 			console.log("Connected to SpacetimeDB");
@@ -183,7 +193,7 @@ export default function Home() {
 	};
 
 	return (
-		<div className="container mx-auto">
+		<div className="container mx-auto py-12">
 			<div className="flex flex-col">
 				<h1>Profile</h1>
 				{!settingName ? (
@@ -214,7 +224,7 @@ export default function Home() {
 			<div className="my-6 bg-zinc-800 p-4 rounded-md">
 				<h1>Messages</h1>
 				{messages.length < 1 && <p>No messages</p>}
-				<div className="overflow-y-auto flex flex-col h-96">
+				<div ref={textareaRef} className="overflow-y-auto flex flex-col h-96">
 					{messages.map((message, key) => (
 						<div key={key}>
 							<p>
