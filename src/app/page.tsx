@@ -1,113 +1,256 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+export type MessageType = {
+	name: string;
+	message: string;
+	time: Date;
+};
+
+import {
+	SpacetimeDBClient,
+	Address,
+	Identity,
+} from "@clockworklabs/spacetimedb-sdk";
+
+import Message from "@/module_bindings/message";
+import User from "@/module_bindings/user";
+import SendMessageReducer from "@/module_bindings/send_message_reducer";
+import SetNameReducer from "@/module_bindings/set_name_reducer";
+
+SpacetimeDBClient.registerReducers(SendMessageReducer, SetNameReducer);
+SpacetimeDBClient.registerTables(Message, User);
+
+if (!("NODE_ENV" in process.env)) {
+	let token = localStorage.getItem("auth_token") || undefined;
+	var spacetimeDBClient = new SpacetimeDBClient(
+		"wss://testnet.spacetimedb.com",
+		"sybomtestchat",
+		token
+	);
+}
 
 export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:size-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
-      </div>
+	let local_identity = useRef<Identity | undefined>(undefined);
+	let initialized = useRef<boolean>(false);
+	const client = useRef<SpacetimeDBClient>(spacetimeDBClient);
 
-      <div className="relative z-[-1] flex place-items-center before:absolute before:h-[300px] before:w-full before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 sm:before:w-[480px] sm:after:w-[240px] before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
+	function userNameOrIdentity(user: User): string {
+		console.log(`Name: ${user.name} `);
+		if (user.name !== null) {
+			return user.name || "";
+		} else {
+			var identityStr = new Identity(
+				user.identity.toUint8Array()
+			).toHexString();
+			console.log(`Name: ${identityStr} `);
+			return new Identity(user.identity.toUint8Array())
+				.toHexString()
+				.substring(0, 8);
+		}
+	}
 
-      <div className="mb-32 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
+	function setAllMessagesInOrder() {
+		let messages = Array.from(Message.all());
+		messages.sort((a, b) => (a.sent > b.sent ? 1 : a.sent < b.sent ? -1 : 0));
 
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
+		let messagesType: MessageType[] = messages.map((message) => {
+			let sender_identity = User.filterByIdentity(message.sender);
+			let display_name = sender_identity
+				? userNameOrIdentity(sender_identity)
+				: "unknown";
 
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Explore starter templates for Next.js.
-          </p>
-        </a>
+			return {
+				name: display_name,
+				message: message.text,
+				time: new Date(Number(message.sent) / 1000),
+			};
+		});
 
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-balance text-sm opacity-50">
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
-  );
+		setMessages(messagesType);
+	}
+
+	const [newName, setNewName] = useState("");
+	const [settingName, setSettingName] = useState(false);
+	const [name, setName] = useState("");
+	const [systemMessage, setSystemMessage] = useState<String[]>([]);
+	const [messages, setMessages] = useState<MessageType[]>([]);
+
+	const [newMessage, setNewMessage] = useState("");
+
+	useEffect(() => {
+		client.current.onConnect((token, identity, address) => {
+			console.log("Connected to SpacetimeDB");
+
+			local_identity.current = identity;
+
+			localStorage.setItem("auth_token", token);
+
+			client.current.subscribe(["SELECT * FROM User", "SELECT * FROM Message"]);
+		});
+
+		client.current.on("initialStateSync", () => {
+			setAllMessagesInOrder();
+			var user = User.filterByIdentity(local_identity?.current!);
+			setName(userNameOrIdentity(user!));
+		});
+
+		Message.onInsert((message, reducerEvent) => {
+			if (reducerEvent !== undefined) {
+				setAllMessagesInOrder();
+			}
+		});
+
+		// Helper function to append a line to the systemMessage state
+		function appendToSystemMessage(line: String) {
+			systemMessage.push(line);
+			if (systemMessage.length > 5) {
+				systemMessage.splice(0, 1);
+			}
+
+			setSystemMessage([...systemMessage]);
+		}
+
+		User.onInsert((user, reducerEvent) => {
+			if (user.online) {
+				appendToSystemMessage(`${userNameOrIdentity(user)} has connected.`);
+			}
+		});
+
+		User.onUpdate((oldUser, user, reducerEvent) => {
+			if (oldUser.online === false && user.online === true) {
+				appendToSystemMessage(`${userNameOrIdentity(user)} has connected.`);
+			} else if (oldUser.online === true && user.online === false) {
+				appendToSystemMessage(`${userNameOrIdentity(user)} has disconnected.`);
+			}
+
+			if (user.name !== oldUser.name) {
+				appendToSystemMessage(
+					`User ${userNameOrIdentity(oldUser)} renamed to ${userNameOrIdentity(
+						user
+					)}.`
+				);
+			}
+		});
+
+		SetNameReducer.on((reducerEvent, newName) => {
+			if (
+				local_identity.current &&
+				reducerEvent.callerIdentity.isEqual(local_identity.current)
+			) {
+				if (reducerEvent.status === "failed") {
+					appendToSystemMessage(`Error setting name: ${reducerEvent.message} `);
+				} else if (reducerEvent.status === "committed") {
+					setName(newName);
+				}
+			}
+		});
+
+		SendMessageReducer.on((reducerEvent, newMessage) => {
+			if (
+				local_identity.current &&
+				reducerEvent.callerIdentity.isEqual(local_identity.current)
+			) {
+				if (reducerEvent.status === "failed") {
+					appendToSystemMessage(
+						`Error sending message: ${reducerEvent.message} `
+					);
+				}
+			}
+		});
+
+		if (!initialized.current) {
+			client.current.connect();
+			initialized.current = true;
+		}
+
+		return () => {
+			client.current.emitter.removeAllListeners();
+		};
+	}, []);
+
+	const onSubmitNewName = (e: React.FormEvent<HTMLFormElement>) => {
+		e.preventDefault();
+		setSettingName(false);
+		SetNameReducer.call(newName);
+	};
+
+	const onMessageSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+		e.preventDefault();
+		SendMessageReducer.call(newMessage);
+		setNewMessage("");
+	};
+
+	return (
+		<div className="container mx-auto">
+			<div className="flex flex-col">
+				<h1>Profile</h1>
+				{!settingName ? (
+					<>
+						<p>Username: {name}</p>
+						<button
+							className="py-2 px-4 rounded-md bg-slate-700 w-fit"
+							onClick={() => {
+								setSettingName(true);
+								setNewName(name);
+							}}
+						>
+							Edit Name
+						</button>
+					</>
+				) : (
+					<form onSubmit={onSubmitNewName} className="space-x-2">
+						<input
+							type="text"
+							className="text-black"
+							value={newName}
+							onChange={(e) => setNewName(e.target.value)}
+						/>
+						<button type="submit">Submit</button>
+					</form>
+				)}
+			</div>
+			<div className="my-6 bg-zinc-800 p-4 rounded-md">
+				<h1>Messages</h1>
+				{messages.length < 1 && <p>No messages</p>}
+				<div>
+					{messages.map((message, key) => (
+						<div key={key}>
+							<p>
+								<span>[{message.time.toLocaleTimeString()}] </span>
+								<b>{message.name}: </b>
+								<span>{message.message}</span>
+							</p>
+						</div>
+					))}
+				</div>
+			</div>
+			<div className="system" style={{ whiteSpace: "pre-wrap" }}>
+				<h1>System</h1>
+				<div>
+					<p>{systemMessage.join("\n")}</p>
+				</div>
+			</div>
+			<div className="">
+				<form
+					onSubmit={onMessageSubmit}
+					style={{
+						display: "flex",
+						flexDirection: "column",
+						width: "50%",
+						margin: "0 auto",
+					}}
+				>
+					<h3>New Message</h3>
+					<textarea
+						className="text-black"
+						value={newMessage}
+						onChange={(e) => setNewMessage(e.target.value)}
+					></textarea>
+					<button type="submit">Send</button>
+				</form>
+			</div>
+		</div>
+	);
 }
