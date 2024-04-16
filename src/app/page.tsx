@@ -214,7 +214,7 @@ export default function Home() {
 			<div className="my-6 bg-zinc-800 p-4 rounded-md">
 				<h1>Messages</h1>
 				{messages.length < 1 && <p>No messages</p>}
-				<div>
+				<div className="overflow-y-auto flex flex-col h-96">
 					{messages.map((message, key) => (
 						<div key={key}>
 							<p>
